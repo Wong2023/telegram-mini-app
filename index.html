@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container { display: flex; height: 100vh; background: white; }
+
+        .sidebar {
+            width: 280px;
+            background: #f7f7f7;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s;
+        }
+
+        .sidebar.hidden { transform: translateX(-100%); }
+
+        .sidebar-header {
+            padding: 15px;
+            background: #667eea;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-header h2 { font-size: 18px; }
+
+        .new-chat-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .chats-list { flex: 1; overflow-y: auto; padding: 10px; }
+
+        .chat-item {
+            padding: 12px;
+            margin-bottom: 5px;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .chat-item:hover { background: #f0f0f0; }
+        .chat-item.active { border-color: #667eea; background: #e8ecff; }
+
+        .chat-item-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .chat-item-preview {
+            font-size: 12px;
+            color: #666;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .chat-item-delete {
+            float: right;
+            color: #ff4444;
+            font-size: 18px;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        .chat-area { flex: 1; display: flex; flex-direction: column; }
+
+        .chat-header {
+            padding: 15px 20px;
+            background: #667eea;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .chat-title { font-size: 18px; font-weight: 600; }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: linear-gradient(to bottom, #f9f9f9, #ffffff);
+        }
+
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 12px;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user { flex-direction: row-reverse; }
+
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .message.user .message-avatar { background: #667eea; }
+        .message.ai .message-avatar { background: #764ba2; }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 16px;
+            line-height: 1.5;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .message.user .message-content {
+            background: #667eea;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.ai .message-content {
+            background: #f0f0f0;
+            color: #333;
+            border-bottom-left-radius: 4px;
+        }
+
+        .input-area {
+            padding: 15px 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 24px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .message-input:focus { border-color: #667eea; }
+
+        .send-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 24px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .send-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+        .empty-state { text-align: center; padding: 60px 20px; color: #999; }
+        .empty-state-icon { font-size: 64px; margin-bottom: 20px; }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+            background: #f0f0f0;
+            border-radius: 16px;
+            width: fit-content;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: #999;
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                position: absolute;
+                z-index: 100;
+                height: 100%;
+                box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            }
+            .menu-toggle { display: block; }
+            .message-content { max-width: 85%; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>📚 Мои чаты</h2>
+            <button class="new-chat-btn" onclick="createNewChat()">+ Новый</button>
+        </div>
+        <div class="chats-list" id="chatsList"></div>
+    </div>
+
+    <div class="chat-area">
+        <div class="chat-header">
+            <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+            <div class="chat-title" id="chatTitle">AI Ассистент</div>
+        </div>
+        <div class="messages-container" id="messagesContainer">
+            <div class="empty-state">
+                <div class="empty-state-icon">💬</div>
+                <h3>Начните новый диалог</h3>
+                <p>Задайте любой вопрос AI</p>
+            </div>
+        </div>
+        <div class="input-area">
+            <input
+                type="text"
+                class="message-input"
+                id="messageInput"
+                placeholder="Напишите сообщение..."
+                onkeypress="handleKeyPress(event)"
+            >
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()">Отправить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ========== КОНФИГУРАЦИЯ ==========
+    // ВСТАВЬ СЮДА HTTPS URL ОТ cloudflared (который печатает app.py)
+    // пример: https://abc-def.trycloudflare.com
+    const BACKEND_URL = "https://PASTE_YOUR_TRYCLOUDFLARE_URL_HERE";
+
+    // ========== ИНИЦИАЛИЗАЦИЯ ==========
+    const tg = window.Telegram?.WebApp;
+    tg?.ready?.();
+    tg?.expand?.();
+
+    let chats = JSON.parse(localStorage.getItem('ai_chats') || '[]');
+    let currentChatId = localStorage.getItem('current_chat_id') || null;
+
+    if (chats.length === 0) {
+        createNewChat();
+    } else {
+        renderChatsList();
+        if (currentChatId) selectChat(currentChatId);
+        else selectChat(chats[0].id);
+    }
+
+    // Telegram user id (если открыто в Telegram), иначе 0
+    const tgUserId = tg?.initDataUnsafe?.user?.id || 0;
+
+    // ========== ФУНКЦИИ ==========
+
+    function createNewChat() {
+        const chat = {
+            id: Date.now().toString(),
+            title: 'Новый чат',
+            messages: [],
+            createdAt: new Date().toISOString()
+        };
+        chats.unshift(chat);
+        saveChats();
+        renderChatsList();
+        selectChat(chat.id);
+    }
+
+    function selectChat(chatId) {
+        currentChatId = chatId;
+        localStorage.setItem('current_chat_id', chatId);
+        renderChatsList();
+        renderMessages();
+
+        const chat = chats.find(c => c.id === chatId);
+        document.getElementById('chatTitle').textContent = chat.title;
+
+        if (window.innerWidth <= 768) {
+            document.getElementById('sidebar').classList.add('hidden');
+        }
+    }
+
+    function deleteChat(chatId) {
+        if (chats.length === 1) {
+            alert('Нельзя удалить последний чат!');
+            return;
+        }
+        chats = chats.filter(c => c.id !== chatId);
+        if (currentChatId === chatId) currentChatId = chats[0].id;
+        saveChats();
+        renderChatsList();
+        selectChat(currentChatId);
+    }
+
+    function saveChats() {
+        localStorage.setItem('ai_chats', JSON.stringify(chats));
+    }
+
+    function renderChatsList() {
+        const list = document.getElementById('chatsList');
+        list.innerHTML = chats.map(chat => {
+            const preview = chat.messages[0]?.content || 'Пустой чат';
+            return `
+                <div class="chat-item ${chat.id === currentChatId ? 'active' : ''}"
+                     onclick="selectChat('${chat.id}')">
+                    <div class="chat-item-title">
+                        ${escapeHtml(chat.title)}
+                        <span class="chat-item-delete"
+                              onclick="event.stopPropagation(); deleteChat('${chat.id}')">×</span>
+                    </div>
+                    <div class="chat-item-preview">${escapeHtml(preview.substring(0, 50))}...</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderMessages() {
+        const container = document.getElementById('messagesContainer');
+        const chat = chats.find(c => c.id === currentChatId);
+
+        if (!chat || chat.messages.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">💬</div>
+                    <h3>Начните новый диалог</h3>
+                    <p>Задайте любой вопрос AI</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = chat.messages.map(msg => `
+            <div class="message ${msg.role}">
+                <div class="message-avatar">${msg.role === 'user' ? '👤' : '🤖'}</div>
+                <div class="message-content">${escapeHtml(msg.content)}</div>
+            </div>
+        `).join('');
+
+        container.scrollTop = container.scrollHeight;
+    }
+
+    async function sendMessage() {
+        const input = document.getElementById('messageInput');
+        const message = input.value.trim();
+        if (!message) return;
+
+        const chat = chats.find(c => c.id === currentChatId);
+
+        chat.messages.push({ role: 'user', content: message });
+
+        if (chat.title === 'Новый чат') {
+            chat.title = message.substring(0, 30) + (message.length > 30 ? '...' : '');
+        }
+
+        input.value = '';
+        saveChats();
+        renderMessages();
+        renderChatsList();
+
+        showTypingIndicator();
+        document.getElementById('sendBtn').disabled = true;
+
+        try {
+            const response = await fetch(`${BACKEND_URL}/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: tgUserId,
+                    chat_id: currentChatId,
+                    text: message
+                })
+            });
+
+            const data = await response.json();
+            hideTypingIndicator();
+
+            const aiResponse = data.reply || "❌ Пустой ответ от сервера";
+
+            chat.messages.push({ role: 'ai', content: aiResponse });
+            saveChats();
+            renderMessages();
+            renderChatsList();
+        } catch (error) {
+            hideTypingIndicator();
+            chat.messages.push({
+                role: 'ai',
+                content: '❌ Ошибка: ' + error.message + '\n\nПроверь BACKEND_URL и что app.py запущен.'
+            });
+            saveChats();
+            renderMessages();
+        } finally {
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('messageInput').focus();
+        }
+    }
+
+    function showTypingIndicator() {
+        const container = document.getElementById('messagesContainer');
+        const indicator = document.createElement('div');
+        indicator.id = 'typingIndicator';
+        indicator.className = 'message ai';
+        indicator.innerHTML = `
+            <div class="message-avatar">🤖</div>
+            <div class="typing-indicator">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+        `;
+        container.appendChild(indicator);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function hideTypingIndicator() {
+        const indicator = document.getElementById('typingIndicator');
+        if (indicator) indicator.remove();
+    }
+
+    function handleKeyPress(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            sendMessage();
+        }
+    }
+
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('hidden');
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // В Telegram можно подхватить тему, но оставим безопасно:
+    // document.body.style.background = tg?.themeParams?.bg_color || '#ffffff';
+</script>
+</body>
+</html>
